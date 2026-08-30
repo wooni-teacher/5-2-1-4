@@ -8,7 +8,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <style>
   :root{
     --wall:#EDE6D5;
@@ -457,9 +456,10 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-const storage = firebase.storage();
 const BASE = "classroom/gukeo_1danwon_4_6cha/students";
-const UNIT_NAME = "gukeo_1danwon_4_6cha";
+// 그림은 Firebase Storage 대신 Realtime Database에 base64 문자열로 직접 저장해요.
+// (Storage는 Blaze 요금제가 필요해서, Spark 무료 요금제에서도 쓸 수 있도록 이 방식을 사용합니다.)
+const MAX_DRAWING_LEN = 900000; // 대략 650KB 안팎으로 제한
 
 const ROSTER = [
   "김다온","김도영","김채화","백수민","소진호","신은비","유준선","윤하늘",
@@ -741,6 +741,18 @@ el("backToWriteBtn").addEventListener("click", ()=>{
   setStage("write");
 });
 
+function exportCanvasDataUrl(){
+  let dataUrl = canvas.toDataURL("image/png");
+  if(dataUrl.length <= MAX_DRAWING_LEN) return dataUrl;
+  // PNG가 너무 크면 JPEG로 압축해서 용량을 줄인다 (배경이 흰색이라 화질 손실이 적음)
+  let quality = 0.85;
+  while(dataUrl.length > MAX_DRAWING_LEN && quality > 0.2){
+    dataUrl = canvas.toDataURL("image/jpeg", quality);
+    quality -= 0.15;
+  }
+  return dataUrl;
+}
+
 el("saveDrawBtn").addEventListener("click", ()=>{
   const errBox = el("drawErr");
   errBox.textContent = "";
@@ -750,39 +762,28 @@ el("saveDrawBtn").addEventListener("click", ()=>{
   saveBtn.disabled = true;
   saveBtn.textContent = "저장 중...";
 
-  canvas.toBlob(blob=>{
-    if(!blob){
-      errBox.textContent = "그림을 저장하는 데 문제가 생겼어요. 다시 시도해주세요.";
-      saveBtn.disabled = false;
-      saveBtn.textContent = "시화 저장하고 완성하기 →";
-      return;
-    }
-    const path = "drawings/" + UNIT_NAME + "/" + state.key + ".png";
-    const storageRef = storage.ref().child(path);
-    let uploadedUrl = "";
-    storageRef.put(blob, { contentType: "image/png" })
-      .then(snap => snap.ref.getDownloadURL())
-      .then(url=>{
-        uploadedUrl = url;
-        return db.ref(BASE + "/" + state.key).update({
-          drawingUrl: url,
-          stage: "drawn",
-          updatedAt: firebase.database.ServerValue.TIMESTAMP
-        });
-      })
-      .then(()=>{
-        state.drawingUrl = uploadedUrl;
-        toast("시화가 저장되었어요 ✓");
-        showDone();
-      })
-      .catch(err=>{
-        errBox.textContent = "저장 중 문제가 생겼어요: " + err.message;
-      })
-      .finally(()=>{
-        saveBtn.disabled = false;
-        saveBtn.textContent = "시화 저장하고 완성하기 →";
-      });
-  }, "image/png");
+  const dataUrl = exportCanvasDataUrl();
+  if(dataUrl.length > MAX_DRAWING_LEN){
+    errBox.textContent = "그림 파일이 너무 커요. 색을 조금 단순하게 칠하거나 세밀한 부분을 줄여서 다시 시도해주세요.";
+    saveBtn.disabled = false;
+    saveBtn.textContent = "시화 저장하고 완성하기 →";
+    return;
+  }
+
+  db.ref(BASE + "/" + state.key).update({
+    drawingUrl: dataUrl,
+    stage: "drawn",
+    updatedAt: firebase.database.ServerValue.TIMESTAMP
+  }).then(()=>{
+    state.drawingUrl = dataUrl;
+    toast("시화가 저장되었어요 ✓");
+    showDone();
+  }).catch(err=>{
+    errBox.textContent = "저장 중 문제가 생겼어요: " + err.message;
+  }).finally(()=>{
+    saveBtn.disabled = false;
+    saveBtn.textContent = "시화 저장하고 완성하기 →";
+  });
 });
 
 el("redrawBtn").addEventListener("click", ()=>{
