@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <style>
   :root{
     --wall:#EDE6D5;
@@ -140,6 +141,41 @@
 
   .stage-actions{display:flex; justify-content:space-between; gap:10px; margin-top:10px;}
 
+  /* draw stage */
+  .draw-toolbar{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    background:var(--wall-deep); border-radius:10px; padding:12px 14px; margin-bottom:16px;
+  }
+  .swatch-row{display:flex; gap:6px; flex-wrap:wrap;}
+  .swatch{
+    width:26px; height:26px; border-radius:50%; cursor:pointer; border:2px solid rgba(255,255,255,0.7);
+    box-shadow:0 1px 3px rgba(0,0,0,0.25); flex-shrink:0;
+  }
+  .swatch.active{outline:2px solid var(--frame); outline-offset:2px;}
+  .tool-group{display:flex; align-items:center; gap:8px;}
+  .tool-group label{font-size:12px; color:var(--ink-soft); white-space:nowrap;}
+  .tool-btn{
+    font-family:inherit; font-size:12.5px; font-weight:700; cursor:pointer; padding:7px 12px;
+    border-radius:16px; border:1.5px solid rgba(43,38,32,0.25); background:#fff; color:var(--ink); white-space:nowrap;
+  }
+  .tool-btn.active{background:var(--frame); color:var(--paper); border-color:var(--frame);}
+  .tool-btn:disabled{opacity:0.4; cursor:not-allowed;}
+  #brushSize{accent-color:var(--brass); width:110px;}
+
+  .canvas-frame-outer{
+    background:linear-gradient(155deg, var(--frame), var(--frame-inner)); padding:10px; border-radius:8px;
+    box-shadow:0 14px 26px rgba(20,17,14,0.28);
+  }
+  #drawCanvas{
+    display:block; width:100%; height:auto; background:#fff; border-radius:2px; touch-action:none; cursor:crosshair;
+  }
+  .draw-hint{font-size:12px; color:var(--ink-soft); text-align:center; margin:10px 0 0;}
+
+  .thumb-wrap{margin-top:14px;}
+  .thumb-wrap img{max-width:100%; border-radius:8px; border:1px solid var(--paper-edge); box-shadow:0 6px 14px rgba(0,0,0,0.12);}
+  .admin-detail img{max-width:160px; border-radius:6px; border:1px solid var(--paper-edge); margin-top:8px; display:block;}
+  .admin-detail a{color:var(--teal); font-size:12px;}
+
   .toast{
     position:fixed; left:50%; bottom:26px; transform:translate(-50%,20px); background:var(--frame); color:var(--paper);
     padding:12px 20px; border-radius:30px; font-size:13.5px; opacity:0; pointer-events:none; transition:all .3s ease;
@@ -186,7 +222,8 @@
   .admin-table tr.row-clickable:hover{background:rgba(180,134,58,0.06);}
   .status-badge{display:inline-block; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:12px;}
   .status-none{background:#EEE9DD; color:var(--ink-soft);}
-  .status-done{background:#E9F2E5; color:#4c7042;}
+  .status-done{background:#F6EFE0; color:#8a6a24;}
+  .status-drawn{background:#E9F2E5; color:#4c7042;}
   .admin-detail{background:#FAF6EC; font-size:13px; line-height:1.7;}
   .admin-detail .d-row{margin-bottom:6px;}
   .admin-detail .d-label{font-weight:700; color:var(--ink-soft); margin-right:6px;}
@@ -219,7 +256,8 @@
   <div class="stepper" id="stepper">
     <div class="step-chip" data-step="ticket"><span class="num">1</span>이름 찾기</div>
     <div class="step-chip" data-step="write"><span class="num">2</span>시 감상하고 쓰기</div>
-    <div class="step-chip" data-step="done"><span class="num">3</span>완료</div>
+    <div class="step-chip" data-step="draw"><span class="num">3</span>시화 그리기</div>
+    <div class="step-chip" data-step="done"><span class="num">4</span>완료</div>
   </div>
 
   <!-- STAGE 1: TICKET -->
@@ -281,17 +319,70 @@
         <p class="hint-err" id="writeErr"></p>
         <div class="stage-actions">
           <span></span>
-          <button class="btn" id="saveWriteBtn" type="button">기록 저장하기 →</button>
+          <button class="btn" id="saveWriteBtn" type="button">저장하고 시화 그리러 가기 →</button>
         </div>
       </div>
     </div>
   </main>
 
-  <!-- STAGE 3: DONE -->
+  <!-- STAGE 3: DRAW -->
+  <main id="stage-draw">
+    <div class="stage-heading">
+      <p class="eyebrow">3. 시화 그리기</p>
+      <h2>내가 고른 구절을 떠올리며 그림으로 표현해보세요</h2>
+    </div>
+    <div class="write-layout">
+      <div class="poem-reference">
+        <p class="ref-eyebrow">🖼️ 오늘의 시</p>
+        <h3>월요일 아침</h3>
+        <p class="poet">현택훈</p>
+        <p class="ref-lines">지금 이럴 때가 아니야.
+월요일이 다가오고 있다고.
+
+월요일이 이 집에 들어오지 못하게
+현관문을 잠그고,
+달력이랑 시계를 서랍 속에 숨겨 놓고,
+잠든 일요일이 깨지 않게
+살금살금 내 방으로 가서
+방문을 닫고 돌아섰는데
+
+책상 앞에서 시간표를 보며
+가방을 싸는 월요일 아침.</p>
+      </div>
+
+      <div class="card">
+        <div class="draw-toolbar">
+          <div class="swatch-row" id="swatchRow"></div>
+          <div class="tool-group">
+            <label>굵기</label>
+            <input type="range" id="brushSize" min="2" max="30" value="6">
+          </div>
+          <div class="tool-group">
+            <button class="tool-btn" id="eraserBtn" type="button">지우개</button>
+            <button class="tool-btn" id="undoBtn" type="button">되돌리기 ↶</button>
+            <button class="tool-btn" id="clearBtn" type="button">전체 지우기</button>
+          </div>
+        </div>
+
+        <div class="canvas-frame-outer">
+          <canvas id="drawCanvas" width="720" height="960"></canvas>
+        </div>
+        <p class="draw-hint">태블릿에서는 손가락이나 펜으로 그림을 그릴 수 있어요.</p>
+
+        <p class="hint-err" id="drawErr"></p>
+        <div class="stage-actions">
+          <button class="btn secondary" id="backToWriteBtn" type="button">← 글로 돌아가기</button>
+          <button class="btn" id="saveDrawBtn" type="button">시화 저장하고 완성하기 →</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- STAGE 4: DONE -->
   <main id="stage-done">
     <div class="card done-card">
       <div class="stamp">✓</div>
-      <h2>기록이 저장되었어요</h2>
+      <h2>시화가 완성되었어요</h2>
       <p>내 생각을 잘 담았는지 다시 한번 읽어보세요.</p>
       <div class="done-recap">
         <p class="d-label">인상 깊은 구절</p>
@@ -299,8 +390,12 @@
         <p class="d-label">인상 깊은 까닭</p>
         <p class="d-text" id="recapReason" style="margin-bottom:0;"></p>
       </div>
-      <div class="stage-actions" style="justify-content:center;">
-        <button class="btn secondary" id="editAgainBtn" type="button">← 내용 수정하기</button>
+      <div class="thumb-wrap" id="recapThumbWrap" style="display:none;">
+        <img id="recapThumb" alt="내가 그린 시화">
+      </div>
+      <div class="stage-actions" style="justify-content:center; gap:10px;">
+        <button class="btn secondary" id="editAgainBtn" type="button">← 글 수정하기</button>
+        <button class="btn secondary" id="redrawBtn" type="button">그림 다시 그리기</button>
       </div>
     </div>
   </main>
@@ -362,16 +457,18 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+const storage = firebase.storage();
 const BASE = "classroom/gukeo_1danwon_4_6cha/students";
+const UNIT_NAME = "gukeo_1danwon_4_6cha";
 
 const ROSTER = [
   "김다온","김도영","김채화","백수민","소진호","신은비","유준선","윤하늘",
   "이보현","이지은","임규원","임휘재","장문혁","장준혁","한승우"
 ];
 // 선생님 전용 화면 비밀번호 - 필요하면 이 값만 바꿔서 사용하세요.
-const ADMIN_PASSCODE = "126758";
+const ADMIN_PASSCODE = "국어수업";
 
-let state = { number:"", name:"", key:"", quote:"", reasonText:"" };
+let state = { number:"", name:"", key:"", quote:"", reasonText:"", drawingUrl:"" };
 let studentsCache = {};
 let selectedRosterIdx = null;
 
@@ -390,7 +487,7 @@ function escapeHtml(str){
 function setStage(name){
   document.querySelectorAll("main").forEach(m=>m.classList.remove("visible"));
   el("stage-"+name).classList.add("visible");
-  const order = ["ticket","write","done"];
+  const order = ["ticket","write","draw","done"];
   const idx = order.indexOf(name);
   document.querySelectorAll(".step-chip").forEach(chip=>{
     const cIdx = order.indexOf(chip.dataset.step);
@@ -433,10 +530,16 @@ el("enterBtn").addEventListener("click", ()=>{
   // 이미 저장된 기록이 있으면 이어서 볼 수 있게 불러온다
   db.ref(BASE + "/" + state.key).get().then(snap=>{
     const data = snap.val();
-    if(data && data.quote){
+    if(data && data.quote && data.drawingUrl){
       state.quote = data.quote;
       state.reasonText = data.reasonText || "";
+      state.drawingUrl = data.drawingUrl;
       showDone();
+    } else if(data && data.quote){
+      state.quote = data.quote;
+      state.reasonText = data.reasonText || "";
+      setupCanvas();
+      setStage("draw");
     } else {
       el("quoteInput").value = "";
       el("reasonTextInput").value = "";
@@ -457,32 +560,248 @@ el("saveWriteBtn").addEventListener("click", ()=>{
   state.quote = quote;
   state.reasonText = reasonText;
 
-  db.ref(BASE + "/" + state.key).set({
+  db.ref(BASE + "/" + state.key).update({
     number: state.number,
     name: state.name,
     quote: quote,
     reasonText: reasonText,
-    stage: "done",
+    stage: "written",
     updatedAt: firebase.database.ServerValue.TIMESTAMP
   }).then(()=>{
     toast("기록이 저장되었어요 ✓");
-    showDone();
+    setupCanvas();
+    setStage("draw");
   }).catch(err=>{
     errBox.textContent = "저장 중 문제가 생겼어요: " + err.message;
   });
 });
-
-function showDone(){
-  el("recapQuote").textContent = state.quote;
-  el("recapReason").textContent = state.reasonText;
-  setStage("done");
-}
 
 el("editAgainBtn").addEventListener("click", ()=>{
   el("quoteInput").value = state.quote;
   el("reasonTextInput").value = state.reasonText;
   setStage("write");
 });
+
+/* ---------------- Stage 3: draw (시화 그리기) ---------------- */
+const COLORS = ["#241F1A","#B65C4A","#D98A3D","#D9B23D","#6E9B5E","#3E8E7E","#4A7BA6","#6B4E71","#D98BAF"];
+let canvas, ctx;
+let drawing = false, lastPos = null, hasDrawn = false;
+let currentColor = COLORS[0], currentSize = 6, isEraser = false;
+let historyStack = [];
+
+function renderSwatches(){
+  const row = el("swatchRow");
+  row.innerHTML = "";
+  COLORS.forEach(c=>{
+    const sw = document.createElement("div");
+    sw.className = "swatch" + (c===currentColor && !isEraser ? " active" : "");
+    sw.style.background = c;
+    sw.addEventListener("click", ()=>{
+      currentColor = c; isEraser = false;
+      renderSwatches();
+      el("eraserBtn").classList.remove("active");
+    });
+    row.appendChild(sw);
+  });
+}
+
+function setupCanvas(){
+  canvas = el("drawCanvas");
+  ctx = canvas.getContext("2d");
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  historyStack = [];
+  hasDrawn = false;
+  isEraser = false;
+  currentColor = COLORS[0];
+  el("brushSize").value = 6;
+  currentSize = 6;
+  renderSwatches();
+  el("eraserBtn").classList.remove("active");
+
+  // 배경 채우기 + 학생이 고른 구절을 옅은 안내 글자로 표시
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawGuideText(state.quote);
+  pushHistory();
+  updateUndoState();
+
+  attachCanvasEvents();
+}
+
+function drawGuideText(text){
+  if(!text) return;
+  ctx.save();
+  ctx.fillStyle = "rgba(43,38,32,0.32)";
+  ctx.font = "26px 'Gowun Batang', serif";
+  ctx.textAlign = "center";
+  const maxWidth = canvas.width - 80;
+  const words = text.split(" ");
+  let lines = [];
+  let line = "";
+  words.forEach(w=>{
+    const test = line ? line + " " + w : w;
+    if(ctx.measureText(test).width > maxWidth && line){
+      lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  });
+  if(line) lines.push(line);
+  const startY = 60;
+  lines.slice(0, 4).forEach((l, i)=>{
+    ctx.fillText(l, canvas.width/2, startY + i*36);
+  });
+  ctx.restore();
+}
+
+function getPos(e){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+}
+
+let eventsAttached = false;
+function attachCanvasEvents(){
+  if(eventsAttached) return;
+  eventsAttached = true;
+  canvas.addEventListener("pointerdown", e=>{
+    drawing = true;
+    lastPos = getPos(e);
+    canvas.setPointerCapture(e.pointerId);
+    ctx.beginPath();
+    ctx.arc(lastPos.x, lastPos.y, (isEraser ? currentSize*1.5 : currentSize)/2, 0, Math.PI*2);
+    ctx.fillStyle = isEraser ? "#FFFFFF" : currentColor;
+    ctx.fill();
+    hasDrawn = true;
+  });
+  canvas.addEventListener("pointermove", e=>{
+    if(!drawing) return;
+    const pos = getPos(e);
+    ctx.strokeStyle = isEraser ? "#FFFFFF" : currentColor;
+    ctx.lineWidth = isEraser ? currentSize*1.5 : currentSize;
+    ctx.beginPath();
+    ctx.moveTo(lastPos.x, lastPos.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    lastPos = pos;
+  });
+  const endStroke = ()=>{
+    if(!drawing) return;
+    drawing = false;
+    pushHistory();
+    updateUndoState();
+  };
+  canvas.addEventListener("pointerup", endStroke);
+  canvas.addEventListener("pointerleave", endStroke);
+  canvas.addEventListener("pointercancel", endStroke);
+}
+
+function pushHistory(){
+  historyStack.push(canvas.toDataURL("image/png"));
+  if(historyStack.length > 20) historyStack.shift();
+}
+function updateUndoState(){
+  el("undoBtn").disabled = historyStack.length <= 1;
+}
+
+el("brushSize").addEventListener("input", e=> currentSize = Number(e.target.value));
+el("eraserBtn").addEventListener("click", ()=>{
+  isEraser = !isEraser;
+  el("eraserBtn").classList.toggle("active", isEraser);
+  renderSwatches();
+});
+el("undoBtn").addEventListener("click", ()=>{
+  if(historyStack.length <= 1) return;
+  historyStack.pop();
+  const img = new Image();
+  img.onload = ()=>{
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+  };
+  img.src = historyStack[historyStack.length - 1];
+  updateUndoState();
+});
+el("clearBtn").addEventListener("click", ()=>{
+  if(!confirm("지금까지 그린 그림을 모두 지울까요?")) return;
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawGuideText(state.quote);
+  hasDrawn = false;
+  historyStack = [];
+  pushHistory();
+  updateUndoState();
+});
+
+el("backToWriteBtn").addEventListener("click", ()=>{
+  el("quoteInput").value = state.quote;
+  el("reasonTextInput").value = state.reasonText;
+  setStage("write");
+});
+
+el("saveDrawBtn").addEventListener("click", ()=>{
+  const errBox = el("drawErr");
+  errBox.textContent = "";
+  if(!hasDrawn && !confirm("아직 그림을 그리지 않은 것 같아요. 그래도 저장할까요?")) return;
+
+  const saveBtn = el("saveDrawBtn");
+  saveBtn.disabled = true;
+  saveBtn.textContent = "저장 중...";
+
+  canvas.toBlob(blob=>{
+    if(!blob){
+      errBox.textContent = "그림을 저장하는 데 문제가 생겼어요. 다시 시도해주세요.";
+      saveBtn.disabled = false;
+      saveBtn.textContent = "시화 저장하고 완성하기 →";
+      return;
+    }
+    const path = "drawings/" + UNIT_NAME + "/" + state.key + ".png";
+    const storageRef = storage.ref().child(path);
+    let uploadedUrl = "";
+    storageRef.put(blob, { contentType: "image/png" })
+      .then(snap => snap.ref.getDownloadURL())
+      .then(url=>{
+        uploadedUrl = url;
+        return db.ref(BASE + "/" + state.key).update({
+          drawingUrl: url,
+          stage: "drawn",
+          updatedAt: firebase.database.ServerValue.TIMESTAMP
+        });
+      })
+      .then(()=>{
+        state.drawingUrl = uploadedUrl;
+        toast("시화가 저장되었어요 ✓");
+        showDone();
+      })
+      .catch(err=>{
+        errBox.textContent = "저장 중 문제가 생겼어요: " + err.message;
+      })
+      .finally(()=>{
+        saveBtn.disabled = false;
+        saveBtn.textContent = "시화 저장하고 완성하기 →";
+      });
+  }, "image/png");
+});
+
+el("redrawBtn").addEventListener("click", ()=>{
+  setupCanvas();
+  setStage("draw");
+});
+
+/* ---------------- Stage 4: done ---------------- */
+function showDone(){
+  el("recapQuote").textContent = state.quote;
+  el("recapReason").textContent = state.reasonText;
+  if(state.drawingUrl){
+    el("recapThumb").src = state.drawingUrl;
+    el("recapThumbWrap").style.display = "block";
+  } else {
+    el("recapThumbWrap").style.display = "none";
+  }
+  setStage("done");
+}
 
 /* ---------------- realtime listener (shared by admin) ---------------- */
 let studentsListenerAttached = false;
@@ -499,20 +818,24 @@ function ensureStudentsListener(){
 let openAdminRowKey = null;
 
 function statusInfo(data){
-  if(data && data.quote) return {label:"작성 완료", cls:"status-done"};
+  if(data && data.quote && data.drawingUrl) return {label:"시화 완성", cls:"status-drawn"};
+  if(data && data.quote) return {label:"글 작성 완료", cls:"status-done"};
   return {label:"미참여", cls:"status-none"};
 }
 
 function renderAdmin(){
-  let done = 0;
+  let written = 0, drawn = 0;
   ROSTER.forEach((name, i)=>{
     const key = sanitizeKey((i+1) + "_" + name);
-    if(studentsCache[key] && studentsCache[key].quote) done++;
+    const d = studentsCache[key];
+    if(d && d.quote) written++;
+    if(d && d.quote && d.drawingUrl) drawn++;
   });
   el("adminSummary").innerHTML = `
     <span class="admin-chip">전체 <b>${ROSTER.length}명</b></span>
-    <span class="admin-chip">작성 완료 <b>${done}</b>명</span>
-    <span class="admin-chip">미참여 <b>${ROSTER.length - done}</b>명</span>
+    <span class="admin-chip">글 작성 완료 <b>${written}</b>명</span>
+    <span class="admin-chip">시화 완성 <b>${drawn}</b>명</span>
+    <span class="admin-chip">미참여 <b>${ROSTER.length - written}</b>명</span>
   `;
 
   const tbody = el("adminTbody");
@@ -553,10 +876,16 @@ function renderAdminDetail(data){
   if(!data || !data.quote){
     return `<div class="d-row" style="color:var(--ink-soft);">아직 기록을 작성하지 않았어요.</div>`;
   }
-  return `
+  let html = `
     <div class="d-row"><span class="d-label">인상 깊은 구절</span>${escapeHtml(data.quote)}</div>
     <div class="d-row"><span class="d-label">인상 깊은 까닭</span>${escapeHtml(data.reasonText || "-")}</div>
   `;
+  if(data.drawingUrl){
+    html += `<div class="d-row"><span class="d-label">시화</span><img src="${data.drawingUrl}" alt="시화"><a href="${data.drawingUrl}" target="_blank" rel="noopener">원본 크기로 보기</a></div>`;
+  } else {
+    html += `<div class="d-row" style="color:var(--ink-soft);">아직 시화를 그리지 않았어요.</div>`;
+  }
+  return html;
 }
 
 function resetStudent(key, label){
@@ -565,7 +894,7 @@ function resetStudent(key, label){
     toast(`${label} 기록을 초기화했어요.`);
     if(openAdminRowKey === key) openAdminRowKey = null;
     if(state.key === key){
-      state = { number:"", name:"", key:"", quote:"", reasonText:"" };
+      state = { number:"", name:"", key:"", quote:"", reasonText:"", drawingUrl:"" };
       selectedRosterIdx = null;
     }
   }).catch(err=>{
@@ -607,19 +936,25 @@ el("adminConfirmBtn").addEventListener("click", ()=>{
 el("adminPassInput").addEventListener("keydown", e=>{ if(e.key === "Enter") el("adminConfirmBtn").click(); });
 el("adminBackBtn").addEventListener("click", ()=>{
   document.querySelectorAll("main").forEach(m=>m.classList.remove("visible"));
-  const target = state.key ? (state.quote ? "done" : "write") : "ticket";
+  let target = "ticket";
+  if(state.key){
+    if(state.quote && state.drawingUrl) target = "done";
+    else if(state.quote){ setupCanvas(); target = "draw"; }
+    else target = "write";
+  }
   setStage(target);
 });
 
 /* ---------------- Reset for next student ---------------- */
 el("resetBtn").addEventListener("click", ()=>{
   if(!confirm("현재 내용을 지우고 다른 친구가 처음부터 시작할까요?")) return;
-  state = { number:"", name:"", key:"", quote:"", reasonText:"" };
+  state = { number:"", name:"", key:"", quote:"", reasonText:"", drawingUrl:"" };
   selectedRosterIdx = null;
   el("ticketErr").textContent = "";
   el("enterBtn").disabled = true;
   el("quoteInput").value = ""; el("reasonTextInput").value = "";
   el("writeErr").textContent = "";
+  el("drawErr").textContent = "";
   renderRoster();
   setStage("ticket");
 });
